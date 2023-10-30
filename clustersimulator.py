@@ -9,6 +9,17 @@ import random
 import uuid
 import mariadb
 
+class ClusterNode:
+    """
+    Simple class to represent a node in the cluster which groups the host name, db connection and cursor
+    """
+    def __init__(self, name, connection, cursor):
+        self.name = name
+        self.connection = connection
+        self.cursor = cursor
+
+    def __repr__(self):
+        return f"ClusterNode: {self.name}"
 class ClusterSimulator:
     """
     Class which connects to and drives the various nodes in the simulation. There are four nodes each with a separate
@@ -26,14 +37,10 @@ class ClusterSimulator:
 
     def __init__(self, primary, secondary, peer, auditor):
         # Create the database connections and cursors
-        self.priname, self.pricnx, self.pricur = self.create_connection(primary)
-        logging.info(f'Connected to primary {self.priname} at {primary["host"]}')
-        self.secname, self.seccnx, self.seccur = self.create_connection(secondary)
-        logging.info(f'Connected to secondary {self.secname} at {secondary["host"]}')
-        self.peername, self.peercnx, self.peercur = self.create_connection(peer)
-        logging.info(f'Connected to peer {self.peername} at {peer["host"]}')
-        self.audname, self.audcnx, self.audcur = self.create_connection(auditor)
-        logging.info(f'Connected to auditor {self.audname} at {auditor["host"]}')
+        self.primary = self.create_connection(primary)
+        self.secondary = self.create_connection(secondary)
+        self.peer = self.create_connection(peer)
+        self.auditor = self.create_connection(auditor)
 
         # Get the names of the customers from the primary
 
@@ -45,22 +52,22 @@ class ClusterSimulator:
 
     def __exit__(self, exc_type, exc_value, traceback):
 
-        if self.pricnx:
-            logging.info(f"Closing connection to primary {self.priname}")
-            self.pricnx.commit()
-            self.pricnx.close()
+        if self.primary.connection:
+            logging.info(f"Closing connection to primary {self.primary.name}")
+            self.primary.connection.commit()
+            self.primary.connection.close()
         if self.seccnx:
-            logging.info(f"Closing connection to secondary {self.secname}")
-            self.seccnx.commit()
-            self.seccnx.close()
-        if self.peercnx:
-            logging.info(f"Closing connection to peer {self.peername}")
-            self.peercnx.commit()
-            self.peercnx.close()
-        if self.audcnx:
-            logging.info(f"Closing connection to auditor {self.audname}")
-            self.audcnx.commit()
-            self.audcnx.close()
+            logging.info(f"Closing connection to secondary {self.secondary.name}")
+            self.secondary.connection.commit()
+            self.secondary.connection.close()
+        if self.peer.connection:
+            logging.info(f"Closing connection to peer {self.peer.name}")
+            self.peer.connection.commit()
+            self.peer.connection.close()
+        if self.auditor.connection:
+            logging.info(f"Closing connection to auditor {self.auditor.name}")
+            self.auditor.connection.commit()
+            self.auditor.connection.close()
 
     def create_connection(self, credentials, database='test'):
         """
@@ -72,7 +79,7 @@ class ClusterSimulator:
         connection = mariadb.connect(host=credentials['host'],user=credentials['user'],
                                      password=credentials['password'], database=database)
         cursor = connection.cursor()
-        return name, connection, cursor
+        return ClusterNode(name, connection, cursor)
 
     def get_customers(self):
         """
@@ -81,7 +88,7 @@ class ClusterSimulator:
         """
 
         sql = "SELECT id, name FROM customers"
-        self.pricur.execute(sql)
+        self.primary.cursor.execute(sql)
         customers = {row[0]:row[1] for row in self.pricur.fetchall()}
         if len(customers) == 0:
             logging.critical("No customers found in primary database")
@@ -125,6 +132,7 @@ if __name__ == '__main__':
                      secondary=config['secondary'],
                      peer=config['peer'],
                      auditor=config['auditor']) as sim:
+            pass
             sim.insert_transactions(sim.priname, sim.pricur, 1000)
     except (mariadb.OperationalError,mariadb.ProgrammingError, mariadb.NotSupportedError) as e:
         logging.critical(f"Unable to connect to database: {e}")
